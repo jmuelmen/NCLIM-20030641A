@@ -1,0 +1,1399 @@
+\documentclass[a4paper,12pt]{article}
+
+\usepackage{fullpage}
+\usepackage{afterpage}
+\usepackage{pdflscape}
+\usepackage[tableposition=top]{caption}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{amsmath}
+%\usepackage[]{natbib}
+\usepackage[super,numbers,sort&compress]{natbib}
+%\usepackage{hyperref}
+\usepackage[hidelinks,pdfusetitle]{hyperref}
+% \renewcommand{\sfdefault}{pfu}
+% \renewcommand{\familydefault}{\sfdefault}
+% \usepackage{sfmath}
+\usepackage{amsmath}
+\usepackage{upgreek}
+\usepackage[displaymath,mathlines,modulo]{lineno}
+\usepackage{newtxtext}
+\usepackage{newtxmath}
+% \DeclareSymbolFont{operators}{OT1}{ntxtlf}{m}{n}
+% \SetSymbolFont{operators}{bold}{OT1}{ntxtlf}{b}{n}
+% \usepackage[no-math]{fontspec}
+% \setmainfont{TeX Gyre Termes}
+% \usepackage{times}
+% \usepackage{newtxmath}
+\parindent=0pt
+\parskip=1ex
+\usepackage{setspace}
+\doublespacing
+
+\renewcommand\d[2]{\ensuremath{\frac{d {#1}}{d {#2}}}}
+\newcommand\dd[2]{\ensuremath{\frac{\partial {#1}}{\partial {#2}}}}
+\newcommand\degree{\ensuremath{{}^\circ}}
+
+\newcommand\nd{\ensuremath{N_d}}
+\renewcommand\ni{\ensuremath{N_i}} %% replaces "not in" set operator
+\newcommand\cdnc{\nd}
+\newcommand\lwp{\ensuremath{\mathcal L}}
+\newcommand\iwp{\ensuremath{\mathcal I}}
+\newcommand\twp{\ensuremath{\mathcal L} + \ensuremath{\mathcal I}}
+\newcommand\fc{\ensuremath{f_c}}
+\newcommand\cf{\fc}
+\newcommand\re{\ensuremath{r_e}}
+
+\newcommand\ql{\ensuremath{q_l}}
+\newcommand\qi{\ensuremath{q_i}}
+\newcommand\phase{\ensuremath{\varphi}}
+
+\newcommand\swcre{\ensuremath{\mathcal{S}_c}}
+
+\newcommand\fboptics{\ensuremath{\lambda_\text{o}}}
+\newcommand\fblifetime{\ensuremath{\lambda_\ell}}
+\newcommand\fbphase{\ensuremath{\lambda_{\phase}}}
+\newcommand\fbtwp{\ensuremath{\lambda_{\twp}}}
+\newcommand\fbcondensate{\fbtwp}
+
+\newcommand\lon{\ensuremath{\lambda}}
+\newcommand\lat{\ensuremath{\phi}}
+
+\newcommand{\jmucomment}[1]{{\color{magenta}{$j_\mu$: #1}}}
+
+\usepackage[textsize=11pt]{todonotes}
+\newcommand{\jmcomment}[1]{\todo[inline, color=red!50]{$j_\mu$: #1}}
+\newcommand{\egcomment}[1]{\todo[inline, color=brown!50]{\textbf{eg}: #1}}
+
+\usepackage{wasysym}
+
+\DeclareRobustCommand*\unit[1]
+ {\ensuremath{%
+   {\thinmuskip3mu\relax
+    \def\mu{\text{\textmu}}\def~{\,}%
+    \ifx\f@series\testbx\mathbf{#1}\else\mathrm{#1}\fi}}}
+
+\title{An underestimated negative cloud feedback from cloud lifetime changes}
+
+\date{}
+
+<<setup, include=FALSE, cache=FALSE>>=
+library(knitr)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(magrittr)
+library(ggplot2)
+library(plotutils)
+library(preciptools)
+library(echamtools)
+library(camtools)
+library(ncdf4)
+library(RColorBrewer)
+## set global chunk options
+opts_chunk$set(fig.path='figure/lifetime-feedback-', cache.path='cache/lifetime-feedback-', 
+               fig.align='center', fig.show='hold', cache = TRUE, warning = FALSE, par=TRUE)
+## $
+## I use = but I can replace it with <-; set code/output width to be 68
+options(formatR.arrow=TRUE, width=68, digits=2, tikzDefaultEngine = "pdftex")
+## evaluation code chunks
+#read_chunk("../eval.R")
+## visualization code chunks
+#read_chunk("../vis.R")
+
+tikz_minus<- function(x) sub("^-", "$-$", format(x))
+tikz_sanitize <- function(x) cbasetools::sanitize.numbers(x, "latex", TRUE, TRUE)
+tikz_sanitize_sparse <- function(x) {
+  ret <- tikz_sanitize(x)
+  ret[seq(1, length(ret), by = 2)] <- ""
+  ret
+}
+
+# change the default scales
+scale_x_continuous <- function(..., labels=tikz_sanitize)
+ggplot2::scale_x_continuous(..., labels=labels)
+
+scale_x_reverse <- function(..., labels=tikz_sanitize)
+ggplot2::scale_x_reverse(..., labels=labels)
+
+scale_y_continuous <- function(..., labels=tikz_sanitize)
+ggplot2::scale_y_continuous(..., labels=labels)
+
+source("prp.R")
+
+n.exp <- 1e4
+
+bearpaws.label <- function(df) {
+    df %>% 
+        mutate(label = reorder(sprintf("$\\gamma = %s$ (%s)", ccraut,
+                                       ifelse(ccraut == 4, "Reference", "BeARPAWS")),
+                               -ccraut))
+}
+
+bearpaws.label.acc <- function(df) {
+    df %>% 
+        mutate(label = reorder(sprintf("$\\gamma = %s$%s", ccraut,
+                                       ifelse(ccraut == 4, " (Reference)",
+                                       ifelse(is.finite(ccauloc) & ccauloc == 10, ", $\\gamma_\\text{acc} = 10$ (BEAHyVE)", " (BeARPAWS)"))),
+                               -ccraut))
+}
+
+bearpaws.levels <- c("Satellite",
+                     "$\\gamma = 4$ (Reference)",
+                     "$\\gamma = 0.1$ (BeARPAWS)", 
+                     "$\\gamma = 0.1$, $\\gamma_\\text{acc} = 10$ (BEAHyVE)")
+
+pnnl.palette <- c("#616265", "#A63F1E", "#D77600", "#F4AA00", "#B3B3B3")
+                     
+bearpaws.palette <- function(case) {
+    pnnl.palette[1:4][table(case) > 0]
+}
+@
+
+\newcommand\erftot{\ensuremath{\text{ERF}_\text{ari+aci}}}
+\newcommand\erfaci{\ensuremath{\text{ERF}_\text{aci}}}
+\newcommand\rfaci{\ensuremath{\text{RF}_\text{aci}}}
+\newcommand\spop{\ensuremath{S_\text{pop}}}
+
+\begin{document}
+\linenumbers
+
+\maketitle
+
+\paragraph{Authors:} Johannes M\"ulmenst\"adt,$^{1,2}$ Marc Salzmann,$^{1}$ Jennifer E.~Kay,$^{3}$
+  Mark D.~Zelinka$^{4}$, Po--Lun Ma$^{2}$, Christine Nam$^{1,*}$, Jan
+  Kretzschmar$^{1}$,  Sabine H\"ornig$^{1}$, and Johannes Quaas$^{1}$\\[2ex]
+  $^{1}$Institute for Meteorology, Universität Leipzig, Leipzig, Germany\\
+  $^{2}$Atmospheric Sciences \& Global Change Division, Pacific Northwest National Laboratory, Richland, Washington, USA \\
+  $^{3}$Dept.~of Atmospheric and Oceanic Sciences and Cooperative Institute for
+  Research in Environmental Sciences, University of Colorado Boulder, Boulder,
+  Colorado, USA \\
+  $^{4}$Cloud Processes Research and Modeling Group, Lawrence Livermore National Laboratory, Livermore, California, USA\\
+  $^*$now at Climate Services Center Germany, Hamburg, Germany
+
+\begin{figure}
+  \centering
+  
+  <<sst4k-cldlif-diff-zonmean,dev='tikz',fig.width=6,fig.height=3,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  
+  df.feedback.zonmean <- get.prp.echam(c(4, 0.1), creth = -2) %>%
+      prp.combine.lw.and.sw() %>%
+      mutate(pert = revalue(pert, c(phase = "phase", cwp = "condensate"))) %>% 
+      group_by(pert, ccraut, lat) %>%
+      summarize(feedback = -0.25 ## 4 K warming; sign flip in PRP code
+                * mean(erf)) %>%
+      ungroup() %>%
+      bearpaws.label() %>%
+      mutate(label = factor(label, levels = bearpaws.levels))
+
+  gg <- df.feedback.zonmean %T>%
+      { plot.palette <<-  bearpaws.palette((.)$label) } %>% 
+      mutate(pert = revalue(pert, c(phase = "$\\fbphase = \\fboptics + \\text{PRP background}$",
+                                    condensate = "$\\fbcondensate = \\fblifetime + \\text{PRP background}$"))) %>% 
+      ggplot(aes(lat, feedback, col = label, lty = pert)) +
+      annotate("rect",
+               ## xmin = c(-75, -65, 35, 45), xmax = c(-35, -45, 75, 65),
+               xmin = c(-75, 35), xmax = c(-35, 75),
+               ymin = -Inf, ymax = Inf,
+               fill = "grey", alpha = 0.4) +
+      geom_line(lwd = 1) +
+      scale_x_geo_zonmean() +
+      theme_bw() +
+      scale_color_manual(name = NULL, values = plot.palette) +
+      scale_linetype_discrete(name = NULL) +
+      labs(y = "Feedback~(W~m$^{-2}$~K$^{-1}$)")
+  gg + theme(legend.position = c(0.475, 0.215), legend.background = element_rect(fill = NA),
+             legend.spacing.y = unit(0, "lines"),
+             axis.title.x = element_blank()) 
+
+  @
+  \caption{}
+  \label{fig:feedback}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+  \centering
+
+  <<amip,dev='tikz',fig.width=6,fig.height=3.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE>>=
+  
+  df.rain <- get.cosp.counts.echam(c(4), ccauloc = 1, creth = c(-2), nudged = FALSE, daily = TRUE) %>%
+      mutate(ccauloc = replace(ccauloc, is.na(ccauloc), 1),
+             creth = replace(creth, is.na(creth), 0)) %>%
+      mutate(case = factor(as.integer(creth))) %>%
+      mutate(lon = ifelse(lon <= 180, lon, lon - 360)) %>%
+      group_by(lon, lat, case) %>%
+      ## summarize(warm = mean(!cold.rain, na.rm = TRUE), 
+      ##           cold = mean(cold.rain, na.rm = TRUE)) %>% ## sum over months
+      mutate(warm.frac = n.warm.rain / (n.warm.rain + n.cold.rain)) %>%
+      ungroup() %>%
+      select(lon, lat, warm.frac, case) %>%
+      mutate(case = revalue(case, c("-2" = "AMIP"))) %>%
+      mutate(intensity = "Rain")
+
+  rbind(df.rain) %>%
+      discretize(warm.frac, warmfrac.breaks(), as_factor = TRUE) %>%
+      filter(!is.na(warm.frac)) %>%
+      ggplot(aes(lon, lat, fill = warm.frac)) +
+      geom_raster() +
+      scale_x_geo(facet = TRUE) + scale_y_geo() +
+      coord_fixed(xlim = c(-180, 180), ylim = c(-80, 80), expand = FALSE) +
+      ## scale_x_continuous("", labels = NULL, breaks = NULL) +
+      ## scale_y_continuous("", labels = NULL, breaks = NULL) +
+      ## scale_fill_manual(values = col.frac, name = expression(f[liq])) +
+      scale_fill_warmfrac() +
+      ## scale_fill_distiller("$\\Delta f_\\text{warm}$", palette = "RdBu", labels = tikz_sanitize, limits = c(-1,1) * 0.4) +
+      geom_world_polygon(highres = FALSE) +
+      annotate("label", -173, 75, label = "(a)", size = 3, col = "black", fill = "white") +
+      theme_bw()  +
+      theme(legend.position = "bottom", legend.box = "horizontal") +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+      guides(fill = guide_legend(direction = "horizontal", nrow = 1, title.vjust = 0.75, keywidth = 2,
+                                 ## guides(fill = guide_legend(direction = "horizontal",
+                                 ##                            nrow = 1,
+                                 label.position = "bottom", label.hjust = 0.5))
+  ##                            title.position = "left", title.vjust = 1)) +
+  ## facet_grid(intensity ~ .) ## , labeller = label_both)
+  @ 
+
+  <<sst4k-diff,dev='tikz',fig.width=6,fig.height=3.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE>>=
+  
+  df.rain.diff <- get.cosp.counts.echam(c(4), ccauloc = 1, creth = c(-2,-3), nudged = FALSE, daily = TRUE) %>%
+      mutate(ccauloc = replace(ccauloc, is.na(ccauloc), 1),
+             creth = replace(creth, is.na(creth), 0)) %>%
+      mutate(case = factor(as.integer(creth))) %>%
+      mutate(lon = ifelse(lon <= 180, lon, lon - 360)) %>%
+      group_by(lon, lat, case) %>%
+      ## summarize(warm = mean(!cold.rain, na.rm = TRUE), 
+      ##           cold = mean(cold.rain, na.rm = TRUE)) %>% ## sum over months
+      mutate(warm.frac = n.warm.rain / (n.warm.rain + n.cold.rain)) %>%
+      ungroup() %>%
+      select(lon, lat, warm.frac, case) %>%
+      mutate(case = revalue(case, c("-2" = "AMIP",
+                                    "-3" = "AMIP4K"))) %>%
+      spread(case, warm.frac) %>%
+      mutate(delta = AMIP4K - AMIP) %>%
+      mutate(intensity = "Rain")
+
+  rbind(df.rain.diff) %>%
+      ggplot(aes(lon, lat, fill = delta)) +
+      geom_raster() +
+      scale_x_geo(facet = TRUE) + scale_y_geo() +
+      coord_fixed(xlim = c(-180, 180), ylim = c(-80, 80), expand = FALSE) +
+      ## scale_x_continuous("", labels = NULL, breaks = NULL) +
+      ## scale_y_continuous("", labels = NULL, breaks = NULL) +
+      ## scale_fill_manual(values = col.frac, name = expression(f[liq])) +
+      scale_fill_distiller("$\\Delta f_\\text{warm}$", palette = "RdBu", labels = tikz_sanitize, limits = c(-1,1) * 0.3) +
+      geom_world_polygon(highres = FALSE) +
+      annotate("label", -173, 75, label = "(b)", size = 3, col = "black", fill = "white") +
+      theme_bw()  +
+      theme(legend.position = "bottom", legend.box = "horizontal") +
+        theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+      guides(fill = guide_colorbar(direction = "horizontal", title.vjust = 0.75, barwidth = 16)) 
+  ## guides(fill = guide_legend(direction = "horizontal",
+  ##                            nrow = 1,
+  ##                            label.position = "bottom", label.hjust = 0.5,
+  ##                            title.position = "left", title.vjust = 1)) +
+  ## facet_grid(intensity ~ .) ## , labeller = label_both)
+  @ 
+
+  \caption{}
+  \label{fig:fwarm}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+  \centering
+
+  <<bias-setup,dev='tikz',fig.width=6,fig.height=6.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  
+  df.rain <- bind_rows(get.cosp.counts.echam(c(4), ccauloc = NA, creth = NA),
+                       get.cosp.counts.echam(c(0.1), ccauloc = 1, creth = -1)) %>%
+      mutate(ccauloc = replace(ccauloc, is.na(ccauloc), 1),
+             creth = replace(creth, is.na(creth), 0)) %>%
+      bearpaws.label() %>%
+      mutate(case = label) %>%
+      mutate(lon = ifelse(lon <= 180, lon, lon - 360)) %>%
+      group_by(lon, lat, case) %>%
+      mutate(warm.prob = n.warm.rain / (n.warm.rain + 0 * n.cold.rain + n.no.rain)) %>%
+      ungroup() %>%
+      select(lon, lat, warm.prob, case) %>%
+      bind_rows(.,
+                remap(warmrain_certain %>% 
+                      filter(denom == "cloud") %>%
+                      transmute(lon = lon, lat = lat, warm.prob = liq),
+                      .) %>%
+                mutate(case = "Satellite"))
+  
+  df.rain.bias <- df.rain %>%
+      group_by(lon, lat) %>% 
+      mutate(warm.prob.bias = warm.prob - warm.prob[case == "Satellite"]) %>%
+      ungroup()
+
+  df.rain.bias.zonmean <- df.rain.bias %>%
+      group_by(lat, case) %>%
+      summarize(warm.prob.bias = mean(warm.prob.bias, na.rm = TRUE),
+                warm.prob = mean(warm.prob, na.rm = TRUE)) %>%
+      ungroup() 
+  @
+
+  <<ccraut-warmprob,dev='tikz',fig.width=6,fig.height=3.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  df.rain.bias.zonmean %>%
+      mutate(case = factor(case, levels = bearpaws.levels)) %T>%
+      { plot.palette <<-  bearpaws.palette((.)$case) } %>% 
+      ggplot(aes(lat, warm.prob, color = case)) +
+      geom_line(lwd = 1) +
+      scale_x_geo_zonmean() +
+      scale_color_manual(name = NULL, values = plot.palette) +
+      labs(y = "$p_\\text{warm}$") +
+      theme_bw() +
+      theme(legend.position = "bottom", legend.box = "horizontal") +
+      theme(axis.title.x = element_blank()) +
+      theme(legend.position = c(0.225, 0.775), legend.background = element_rect(fill = NA),
+            legend.spacing.y = unit(0, "lines"),
+            axis.title.x = element_blank())
+  @ 
+  
+  \caption{}
+  \label{fig:pwarm}
+\end{figure}
+
+\clearpage
+
+<<sst4k-cldlif-diff-ratios-setup,dev='tikz',fig.width=3,fig.height=3,out.width='0.5\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  ## do this here because df.fb.norm is an input to the background subtraction
+
+  df.rad <- get.rad.summary.echam(c(0.1,4), ccauloc = 1, creth = c(-2,-3), nudged = FALSE, daily = TRUE) %>%
+      mutate(ccauloc = replace(ccauloc, is.na(ccauloc), 1),
+             creth = replace(creth, is.na(creth), 0)) %>%
+      mutate(case = factor(as.integer(creth))) %>%
+      mutate(case = revalue(case, c("-2" = "AMIP",
+                                    "-3" = "AMIP4K"))) %>%
+      filter(case == "AMIP") %>% 
+      mutate(rtot = srad0 + trad0,
+             ptot = (aprl + aprc) * 2.5e6) %>%
+      mutate(albedo = 1 - srad0 / srad0d,
+             swcre = srad0 - sraf0) %>%
+      mutate(lon = 1e-5 * lon %/% 1e-5,
+             lat = 1e-5 * lat %/% 1e-5)
+
+  df.feedback <- get.prp.echam(c(4, 0.1), creth = -2) %>%
+      prp.combine.lw.and.sw() %>%
+      mutate(pert = revalue(pert, c(phase = "phase", cwp = "twp"))) %>% 
+      group_by(pert, ccraut, lon, lat) %>%
+      summarize(feedback = -0.25 ## 4 K warming; sign flip in PRP code
+                * mean(erf)) %>%
+      ungroup() %>%
+      bearpaws.label() %>% 
+      mutate(lon = 1e-5 * lon %/% 1e-5,
+             lat = 1e-5 * lat %/% 1e-5)
+  
+  df.fb.norm <- left_join(df.feedback, df.rad, by = c("ccraut", "lon", "lat")) %>%
+      spread(pert, feedback) %>%
+      mutate(optics.as.denominator = phase,
+             lifetime.as.denominator = twp) %>%
+      mutate(one = 1,
+             swcre = -1e-2 * swcre) %>% 
+      gather(denominator, denominator.value,
+             one, 
+             xlvi, swcre, optics.as.denominator## , lifetime.as.denominator
+             ) %>%
+      gather(pert, feedback, phase, twp) %>%
+      ## mutate(normalized.lifetime = lifetime / denominator.value,
+      ##        normalized.optics = optics / denominator.value) %>%
+      group_by(lat, ccraut, pert, denominator, label) %>%
+      summarize(feedback = mean(feedback, na.rm = TRUE),
+                denominator.value = mean(denominator.value, na.rm = TRUE),
+                normalized.feedback = feedback / denominator.value) %>%
+      ungroup()
+@ 
+
+\begin{figure}
+  \centering
+  <<feedbacks-fit-setup,dev='tikz',fig.width=3,fig.height=3,out.width='0.5\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+
+  ## generate parameters of the fit
+  library(doParallel)
+  registerDoParallel(cores = 4)
+  set.seed(0xbeef)
+  df.params <- data.frame(experiment = 1:n.exp,
+                       lat.max = runif(n.exp, 65, 75),
+                       lat.min = runif(n.exp, 35, 45),
+                       loess.span = runif(n.exp, 0.65, 0.8))
+
+  df.fit <- df.params %>%
+      ddply( ~ experiment, .parallel = TRUE, function(df) {
+          ## df.feedback.sea %>%
+          df.fb.norm %>%
+              mutate(feedback =  feedback * cos(lat * pi / 180)) %>% 
+              ## group_by(pert, ccraut, label, lat, denominator) %>%
+              ## ## summarize(feedback = -0.25 * mean(erf[lsm == "Sea"])) %>%
+              ## summarize(feedback = mean(feedback)) %>% 
+              ## ungroup() %>%
+              ddply( ~ pert + ccraut + label, function(x) {
+                  model.bg <- x %>%
+                      ## fit background shape excluding signal region (NH and SH)
+                      filter(abs(lat) > df$lat.max | abs(lat) < df$lat.min) %>%
+                      loess(feedback ~ lat, ., span = df$loess.span)
+                  x %<>%
+                      mutate(bg = predict(model.bg, .),
+                             ## cos(lat)-weighted signal
+                             signal = (feedback - bg)) %>%
+                      cbind(df)
+                  model.signal.sh <- try(
+                      x %>%
+                      ## fit signal shape excluding background region (SH only)
+                      filter(lat >= -abs(df$lat.max) & lat <= -abs(df$lat.min)) %>% 
+                      nls(signal ~ integral * dnorm(pi * lat / 180, peak, width), .,
+                          start = c(integral = -0.05, peak = -52 * pi / 180, width = pi * 10 / 180),
+                          lower = c(-1, -70 * pi / 180, 5 * pi / 180),
+                          upper = c(0, -40 * pi / 180, 20 * pi / 180),
+                          algorithm = "port"))
+                  if ("try-error" %in% class(model.signal.sh)) {
+                      x %<>%
+                          mutate(feedback.sh = NA, se.sh = NA)
+                  } else {
+                      res <- coef(model.signal.sh %>% summary)["integral",]
+                      ## normalize the cos(lat)-weighted feedback by \int\cos(\phi)\,d\phi
+                      x %<>%
+                          mutate(feedback.sh = 0.5 * res[1],
+                                 se.sh = 0.5 * res[2])
+                  }
+                  model.signal.nh <- try(
+                      x %>%
+                      ## fit signal shape excluding background region (SH only)
+                      filter(lat <= abs(df$lat.max) & lat >= abs(df$lat.min)) %>% 
+                      nls(signal ~ integral * dnorm(pi * lat / 180, peak, width), .,
+                          start = c(integral = -0.05, peak = 52 * pi / 180, width = pi * 10 / 180),
+                          lower = c(-1, 40 * pi / 180, 5 * pi / 180),
+                          upper = c(0, 70 * pi / 180, 20 * pi / 180),
+                          algorithm = "port"))
+                  if ("try-error" %in% class(model.signal.nh)) {
+                      x %<>%
+                          mutate(feedback.nh = NA, se.nh = NA)
+                  } else {
+                      res <- coef(model.signal.nh %>% summary)["integral",]
+                      ## normalize the cos(lat)-weighted feedback by \int\cos(\phi)\,d\phi
+                      x %<>%
+                          mutate(feedback.nh = 0.5 * res[1],
+                                 se.nh = 0.5 * res[2])
+                  }
+                  x %<>% ddply(~ experiment + denominator, function(y) {
+                      z <- y %>%
+                          filter(abs(lat) < df$lat.max & abs(lat) > df$lat.min) %>% 
+                          summarize(denominator.value = sum((denominator.value * cos(lat * pi / 180))) /
+                                        sum(cos(lat * pi / 180)))
+                      y %>%
+                          slice(1) %>%
+                          mutate(denominator.value = z$denominator.value)
+                  })
+              })
+      })
+  @
+
+  <<feedbacks-fit-detail-setup,dev='tikz',fig.width=3,fig.height=3,out.width='0.5\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+
+  set.seed(0xbeef)
+  n.exp.detail <- 1e2
+  ## df.params.detail <- sample_n(df.params, n.exp.detail)
+  df.params.detail <- data.frame(experiment = 1:n.exp.detail,
+                                 lat.max = runif(n.exp.detail, 65, 75),
+                                 lat.min = runif(n.exp.detail, 35, 45),
+                                 loess.span = runif(n.exp.detail, 0.65, 0.8))
+
+  fit.function <- function(df) {
+      df.fb.norm %>%
+          mutate(feedback =  feedback * cos(lat * pi / 180)) %>% 
+          ## group_by(pert, ccraut, label, lat, denominator) %>%
+          ## ## summarize(feedback = -0.25 * mean(erf[lsm == "Sea"])) %>%
+          ## summarize(feedback = mean(feedback)) %>% 
+          ## ungroup() %>%
+          ddply( ~ pert + ccraut + label, function(x) {
+              model.bg <- x %>%
+                  ## fit background shape excluding signal region (NH and SH)
+                  filter(abs(lat) > df$lat.max | abs(lat) < df$lat.min) %>%
+                  loess(feedback ~ lat, ., span = df$loess.span)
+              x %<>%
+                  mutate(bg = predict(model.bg, .),
+                         ## cos(lat)-weighted signal
+                         signal = (feedback - bg)) %>%
+                  cbind(df)
+              model.signal.sh <- try(
+                  x %>%
+                  ## fit signal shape excluding background region (SH only)
+                  filter(lat >= -abs(df$lat.max) & lat <= -abs(df$lat.min)) %>% 
+                  nls(signal ~ integral * dnorm(pi * lat / 180, peak, width), .,
+                      start = c(integral = -0.05, peak = -52 * pi / 180, width = pi * 10 / 180),
+                      lower = c(-1, -70 * pi / 180, 5 * pi / 180),
+                      upper = c(0, -40 * pi / 180, 20 * pi / 180),
+                      algorithm = "port"))
+              if ("try-error" %in% class(model.signal.sh)) {
+                  x %<>%
+                      mutate(feedback.sh = NA, se.sh = NA, signal.fit.sh = NA)
+              } else {
+                  res <- coef(model.signal.sh %>% summary)["integral",]
+                  ## normalize the cos(lat)-weighted feedback by \int\cos(\phi)\,d\phi
+                  x %<>%
+                      mutate(feedback.sh = 0.5 * res[1],
+                             se.sh = 0.5 * res[2],
+                             signal.fit.sh = predict(model.signal.sh, .))
+              }
+              model.signal.nh <- try(
+                  x %>%
+                  ## fit signal shape excluding background region (SH only)
+                  filter(lat <= abs(df$lat.max) & lat >= abs(df$lat.min)) %>% 
+                  nls(signal ~ integral * dnorm(pi * lat / 180, peak, width), .,
+                      start = c(integral = -0.05, peak = 52 * pi / 180, width = pi * 10 / 180),
+                      lower = c(-1, 40 * pi / 180, 5 * pi / 180),
+                      upper = c(0, 70 * pi / 180, 20 * pi / 180),
+                      algorithm = "port"))
+              if ("try-error" %in% class(model.signal.nh)) {
+                  x %<>%
+                      mutate(feedback.nh = NA, se.nh = NA, signal.fit.nh = NA)
+              } else {
+                  res <- coef(model.signal.nh %>% summary)["integral",]
+                  ## normalize the cos(lat)-weighted feedback by \int\cos(\phi)\,d\phi
+                  x %<>%
+                      mutate(feedback.nh = 0.5 * res[1],
+                             se.nh = 0.5 * res[2],
+                             signal.fit.nh = predict(model.signal.nh, .))
+              }
+              if (0) {
+                  x %<>% ddply(~ experiment + denominator, function(y) {
+                      z <- y %>%
+                          filter(abs(lat) < df$lat.max & abs(lat) > df$lat.min) %>% 
+                          summarize(denominator.value = sum((denominator.value * cos(lat * pi / 180))) /
+                                        sum(cos(lat * pi / 180)))
+                      y %>%
+                          slice(1) %>%
+                          mutate(denominator.value = z$denominator.value)
+                  })
+              }
+              x
+          })
+      
+  }
+  
+  df.fit.detail <- df.params.detail %>%
+      ddply( ~ experiment, .parallel = TRUE, fit.function)
+
+  df.fit.pathological <- data.frame(lat.max = 61, lat.min = 36, loess.span = 0.57) %>%
+      fit.function() %>%
+      mutate(pert = revalue(pert, c(phase = "optics", twp = "lifetime"))) %>% 
+      mutate(pert = sprintf("$\\fb%s$", pert))
+  @
+
+  <<feedbacks-fit-plot,dev='tikz',fig.width=6,fig.height=6.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  df.fit.detail %>%
+      mutate(pert = revalue(pert, c(phase = "optics", twp = "lifetime"))) %>% 
+      bearpaws.label() %>%
+      group_by(lat, label, pert) %>%
+      summarize(bg.mean = mean(bg),
+                bg.sd = sd(bg),
+                signal.mean = mean(signal.fit.sh + signal.fit.nh, na.rm = TRUE),
+                signal.sd = sd(signal.fit.sh + signal.fit.nh, na.rm = TRUE),
+                combined.sd = sqrt(signal.sd^2 + bg.sd^2)) %>%
+      ungroup() %>% 
+      mutate(pert = sprintf("$\\fb%s$", pert)) %>% 
+      ggplot(aes(x = lat)) +
+      geom_line(aes(y = signal.mean + bg.mean, col = "Signal")) +
+      geom_ribbon(aes(ymin = signal.mean + bg.mean - 1.956 * signal.sd, ymax = signal.mean + bg.mean + 1.956 * signal.sd, fill = "Signal"), alpha = 0.25) +
+      geom_line(aes(y = bg.mean, col = "Background")) +
+      geom_ribbon(aes(ymin = bg.mean - 1.956 * bg.sd, ymax = bg.mean + 1.956 * bg.sd, fill = "Background"), alpha = 0.25) +
+      geom_line(aes(y = bg), df.fit.pathological %>% bearpaws.label(), lty = "dashed") +
+      facet_grid(label ~ pert, scales = "free_x") + scale_color_distiller(palette = "Spectral") +
+      geom_point(aes(y = feedback * cos(lat * pi / 180)),
+                 data = df.feedback.zonmean %>% 
+                 mutate(pert = revalue(pert, c(phase = "optics", condensate = "lifetime"))) %>% 
+                 mutate(pert = sprintf("$\\fb%s$", pert)),
+                 size = 0.2) +
+      scale_fill_brewer(palette = "Set1", guide = "none") + scale_color_brewer("", palette = "Set1") +
+      scale_x_geo_zonmean() +
+      ## annotate("label", -78, 0.7, label = c("(a)", "(b)", "(c)", "(d)"), size = 3, col = "black", fill = "white") +
+      theme_bw() +
+      theme(axis.title.x = element_blank()) +
+      theme(legend.position = "bottom", legend.box = "horizontal") +
+      labs(y = "Feedback~$\\times\\cos\\phi$~(W~m$^{-2}$~K$^{-1}$)")
+  
+
+  @
+  \caption{}
+  \label{fig:bg}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+  <<feedbacks-raw-plot,dev='tikz',fig.width=6,fig.height=3.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  df.rain.diff.zonmean <- get.cosp.counts.echam(c(4), ccauloc = 1, creth = c(-2,-3), nudged = FALSE, daily = TRUE) %>%
+      bearpaws.label() %>%
+      mutate(ccauloc = replace(ccauloc, is.na(ccauloc), 1),
+             creth = replace(creth, is.na(creth), 0)) %>%
+      mutate(case = factor(as.integer(creth))) %>%
+      mutate(lon = ifelse(lon <= 180, lon, lon - 360)) %>%
+      group_by(lat, case, label) %>%
+      summarize(warm.frac = mean(n.warm.rain) / mean(n.warm.rain + n.no.rain)) %>%
+      ungroup() %>%
+      select(lat, warm.frac, case, label) %>%
+      mutate(case = revalue(case, c("-2" = "AMIP",
+                                    "-3" = "AMIP4K"))) %>%
+      spread(case, warm.frac) %>%
+      mutate(delta = 2 * (AMIP4K - AMIP) ## / (AMIP4K - AMIP)
+             ) %>%
+      mutate(intensity = "Rain")
+  
+  df.fit.detail %>%
+      bearpaws.label() %>%
+      group_by(lat, label, pert) %>%
+      summarize(bg.mean = mean(bg),
+                bg.sd = sd(bg),
+                signal.mean = mean(signal.fit.sh + signal.fit.nh, na.rm = TRUE),
+                signal.sd = sd(signal.fit.sh + signal.fit.nh, na.rm = TRUE),
+                combined.sd = sqrt(signal.sd^2 + bg.sd^2)) %>%
+      ungroup() %>% 
+      filter(pert == "lifetime") %>%
+      ## bind_rows(df.rain.diff.zonmean) %>% 
+      ggplot(aes(x = lat)) +
+      ## geom_line(aes(y = -signal.mean / cos(lat * pi / 180), col = sprintf("$\\cos\\phi\\fblifetime$, %s", label))) +
+      ## geom_line(aes(y = signal.mean + bg.mean, col = sprintf("$\\cos\\phi\\fblifetime$, %s", label))) +
+      ## geom_ribbon(aes(ymin = -signal.mean - 1.956 * signal.sd, ymax = -signal.mean + 1.956 * signal.sd, fill = "\\cos\\phi\\fblifetime"), alpha = 0.25) +
+      geom_line(aes(y = delta, col = "$\\Delta f_\\text{warm}$", group = label),
+                lwd = 1,
+                data = df.rain.diff.zonmean) +
+      ## facet_grid(label ~ ., scales = "free_x") + 
+      geom_line(aes(y = feedback ## * cos(lat * pi / 180)
+                  , col = sprintf("$\\lambda%s_\\mathcal{L+I}$~[%s]~(W~m$^{-2}$)", ifelse(grepl("Reference", label), "", "'"), label)),
+                lwd = 1,
+                data = df.feedback.zonmean %>% filter(pert ==  "condensate") %>% mutate(label = factor(label, levels = bearpaws.levels))) +
+      scale_color_manual("", values = pnnl.palette[c(5,3,2)]) +
+      scale_x_geo_zonmean() +
+      ## annotate("label", -78, 0.7, label = c("(a)", "(b)", "(c)", "(d)"), size = 3, col = "black", fill = "white") +
+      theme_bw() +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+      theme(legend.position = c(0.5, 0.275), legend.background = element_rect(fill = NA),
+            legend.box = "horizontal", legend.direction = "vertical",
+            legend.spacing.y = unit(0, "lines"))
+  @
+  <<feedbacks-signal-plot,dev='tikz',fig.width=6,fig.height=3.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  df.fit.detail %>%
+      bearpaws.label() %>%
+      group_by(lat, label, pert) %>%
+      summarize(bg.mean = mean(bg),
+                bg.sd = sd(bg),
+                signal.mean = mean(signal.fit.sh + signal.fit.nh, na.rm = TRUE),
+                signal.sd = sd(signal.fit.sh + signal.fit.nh, na.rm = TRUE),
+                combined.sd = sqrt(signal.sd^2 + bg.sd^2)) %>%
+      ungroup() %>% 
+      filter(pert == "twp") %>%
+      ## bind_rows(df.rain.diff.zonmean) %>% 
+      ggplot(aes(x = lat)) +
+      geom_line(aes(y = signal.mean ## / cos(lat * pi / 180)
+                  , col = sprintf("$\\lambda%s_\\ell$~[%s]~(W~m$^{-2}$)", ifelse(grepl("Reference", label), "", "'"), label))
+              , lwd = 1
+) +
+      ## geom_line(aes(y = signal.mean + bg.mean, col = sprintf("$\\cos\\phi\\fblifetime$, %s", label))) +
+      ## geom_ribbon(aes(ymin = -signal.mean - 1.956 * signal.sd, ymax = -signal.mean + 1.956 * signal.sd, fill = "\\cos\\phi\\fblifetime"), alpha = 0.25) +
+      geom_line(aes(y = delta, col = "$\\Delta f_\\text{warm}$", group = label),
+                lwd = 1,
+                data = df.rain.diff.zonmean) +
+      ## facet_grid(label ~ ., scales = "free_x") + 
+      ## geom_line(aes(y = feedback ## * cos(lat * pi / 180)
+      ##             , col = sprintf("$\\lambda%s_\\mathcal{L+I}$~[%s]~(W~m$^{-2}$)", ifelse(grepl("Reference", label), "", "'"), label)),
+      ##           lwd = 1,
+      ##           data = df.feedback.zonmean %>% filter(pert ==  "condensate") %>% mutate(label = factor(label, levels = bearpaws.levels))) +
+      scale_color_manual("", values = pnnl.palette[c(5,3,2)]) +
+      scale_x_geo_zonmean() +
+      ## annotate("label", -78, 0.7, label = c("(a)", "(b)", "(c)", "(d)"), size = 3, col = "black", fill = "white") +
+      theme_bw() +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
+      theme(legend.position = c(0.5, 0.275), legend.background = element_rect(fill = NA),
+            legend.box = "horizontal", legend.direction = "vertical",
+            legend.spacing.y = unit(0, "lines"))
+
+  @
+  \caption{}
+  \label{fig:sig}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+  \centering
+  <<sat-dat,dev='tikz',fig.width=6,fig.height=7.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+
+  data(ceres)
+
+  dardar <- readRDS("DARDAR_IWP.rds") %>%
+      filter(flag.precip == "none") %>%
+      rename(lat = lat_bin) %>%
+      mutate(iwp_incloud = 1e-3 * iwp_incloud,
+             iwp_grid = 1e-3 * iwp_grid) %>% 
+      select(lat, iwp_grid) 
+
+  mac.lwp <- ldply(list.files("~/mac-lwp", "maclwp_cloudlwpdiurnal_.._v1.nc4", full.names = TRUE),
+                   function(fname) {
+                       nc <- nc_open(fname)
+                       on.exit(nc_close(nc))
+                       nc.to.df(nc, "meanfit")
+                   }) %>%
+      ## group_by(lat) %>%
+      ## summarize(xlvi = 1e-3 * mean(meanfit, na.rm = TRUE)) %>%
+      ## ungroup()
+      mutate(meanfit = 1e-3 * meanfit)
+
+  ciwp.2cice <- nc.to.df(nc_open("CIWP_2C-ICE_zonmean-jan2007-dec2010-mgkg_1x1.nc"),
+                         "ciwp") %>%
+      mutate(ciwp = 1e-3 * ciwp) %>%
+      select(lat, ciwp) %>%
+      filter(ciwp > 0)
+                        
+  gcpc <- nc.to.df(nc_open("precip.ltm.nc"), "precip") %>%
+      mutate(precip = precip / 24) %>% ## hourly instead of daily precip
+      select(lat, precip)
+
+  sat.dat <- bind_rows(ceres, mac.lwp, ciwp.2cice, gcpc) %>%
+      rename(aclcov = cldarea_total_daynight_clim,
+             lwcre = toa_cre_lw_clim,
+             swcre = toa_cre_sw_clim,
+             rtot = toa_net_all_clim,
+             trad0 = toa_lw_all_clim,
+             srad0 = toa_sw_all_clim,
+             traf0 = toa_lw_clr_clim,
+             sraf0 = toa_sw_clr_clim,
+             ## qvi = prw,
+             xivi = ciwp,
+             xlvi = meanfit) %>%
+      mutate(aclcov = aclcov * 1e-2,
+             trad0 = -trad0,
+             traf0 = -traf0,
+             srad0 = solar_clim - srad0,
+             sraf0 = solar_clim - sraf0,
+             ## aprc = precip,
+             ## aprl = precip,
+             ptot = precip) %>%
+      select(-c(precip,
+                solar_clim,
+                cldtau_total_day_clim,
+                toa_cre_net_clim,
+                toa_net_clr_clim)) %>% 
+      gather(type, val, -c(lon,lat,month)) %>%
+      group_by(lat, type) %>%
+      summarize(val = mean(val, na.rm = TRUE)) %>%
+      ungroup() %>%
+      filter(!is.na(val)) %>%
+      mutate(type = revalue(type,
+                            c(aclcov = "$f_c$",
+                              aprc = "$P_\\text{conv}$ (mm~h$^{-1}$)",
+                              aprl = "$P_\\text{strat}$ (mm~h$^{-1}$)",
+                              aprs = "$P_\\text{snow}$ (mm~h$^{-1}$)",
+                              qvi = "$q_v$ (kg~m$^{-2}$)",
+                              xlvi = "\\lwp~(kg~m$^{-2}$)",
+                              xivi = "\\iwp~(kg~m$^{-2}$)",
+                              rtot = "$R_\\text{TOA}$ (\\unit{W~m^{-2}})",
+                              ptot = "$P_\\text{tot}$ (mm~h$^{-1}$)",
+                              srad0 = "TOA SW (\\unit{W~m^{-2}})",
+                              sraf0 = "TOA SW clr (\\unit{W~m^{-2}})",
+                              trad0 = "TOA LW (\\unit{W~m^{-2}})",
+                              traf0 = "TOA LW clr (\\unit{W~m^{-2}})",
+                              lwcre = "LW CRE (\\unit{W~m^{-2}})",
+                              swcre = "SW CRE (\\unit{W~m^{-2}})"))) %>%
+      mutate(case = "AMIP",
+             label = "Satellite") %>%
+      mutate(label = factor(label, levels = bearpaws.levels))
+  @
+  
+  <<sst4k-state-zonmean,dev='tikz',fig.width=6,fig.height=7.2,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  df.state.zonmean <- bind_rows(get.rad.summary.echam(c(0.1,4), ccauloc = 1, creth = c(-2,-3), nudged = FALSE, daily = TRUE)) %>%
+      mutate(ccauloc = replace(ccauloc, is.na(ccauloc), 1),
+             creth = replace(creth, is.na(creth), 0)) %>%
+      mutate(case = factor(as.integer(creth), levels = rev(sort(unique(as.integer(creth)))))) %>%
+      mutate(case = revalue(case, c("-1" = "AMIP",
+                                    "-2" = "AMIP",
+                                    "-3" = "AMIP4K"))) %>%
+      mutate(aprl = aprl * 3600,
+             aprs = aprs * 3600,
+             aprc = aprc * 3600) %>%
+      mutate(rtot = srad0 + trad0,
+             ptot = aprl + aprc) %>%
+      mutate(albedo = 1 - srad0 / srad0d,
+             swcre = srad0 - sraf0,
+             lwcre = trad0 - traf0) %>%
+      mutate(lon = 1e-5 * lon %/% 1e-5,
+             lat = 1e-5 * lat %/% 1e-5) %>%
+      bearpaws.label() %>%
+      gather(type, flux, c(srad0:xlvi, rtot, ptot, albedo, swcre, lwcre)) %>%
+      group_by(case, type, label, lat) %>%
+      summarize(flux = mean(flux)) %>% 
+      ungroup() %>%
+      mutate(type = revalue(type,
+                            c(aclcov = "$f_c$",
+                              aprc = "$P_\\text{conv}$ (mm~h$^{-1}$)",
+                              aprl = "$P_\\text{strat}$ (mm~h$^{-1}$)",
+                              aprs = "$P_\\text{snow}$ (mm~h$^{-1}$)",
+                              qvi = "$q_v$ (kg~m$^{-2}$)",
+                              xlvi = "\\lwp~(kg~m$^{-2}$)",
+                              xivi = "\\iwp~(kg~m$^{-2}$)",
+                              rtot = "$R_\\text{TOA}$ (\\unit{W~m^{-2}})",
+                              ptot = "$P_\\text{tot}$ (mm~h$^{-1}$)",
+                              srad0 = "TOA SW (\\unit{W~m^{-2}})",
+                              sraf0 = "TOA SW clr (\\unit{W~m^{-2}})",
+                              trad0 = "TOA LW (\\unit{W~m^{-2}})",
+                              traf0 = "TOA LW clr (\\unit{W~m^{-2}})",
+                              lwcre = "LW CRE (\\unit{W~m^{-2}})",
+                              swcre = "SW CRE (\\unit{W~m^{-2}})")))
+
+  df.state.zonmean %>%
+      bind_rows(sat.dat %>% rename(flux = val)) %>% 
+      mutate(label = factor(label, levels = bearpaws.levels)) %>%
+      filter(case == "AMIP") %T>% 
+      { plot.palette <<-  bearpaws.palette((.)$label) } %>% 
+      ggplot(aes(x = lat, y = flux, color = label, lwd = label)) +
+      geom_line() +
+      scale_x_geo_zonmean() +
+      facet_wrap(type ~ ., scales = "free_y", ncol = 3) +
+      scale_color_manual(name = NULL, values = plot.palette) +
+      ## scale_linetype_discrete(name = NULL) +
+      scale_size_manual(name = NULL, values = c(1.2,1,1,1)) +
+      theme_bw() +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank(),
+            legend.position = "bottom", legend.box = "horizontal", legend.direction = "horizontal")
+  @
+  \caption{}
+    \label{fig:state}
+\end{figure}
+
+\begin{figure}
+  \centering
+  <<sst4k-state-change-zonmean,dev='tikz',fig.width=6,fig.height=7.2,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+
+  df.state.change.zonmean <- df.state.zonmean %>%
+      spread(case, flux) %>%
+      mutate(delta = ifelse(type != "$q_v$ (mm)", ## relative change for q_v
+                            AMIP4K - AMIP,
+                            2 * (AMIP4K - AMIP) / (AMIP4K + AMIP))) %>%
+      select(-c(AMIP,AMIP4K)) %>%
+      mutate(type = sprintf("$\\Delta$%s", 
+                            ifelse(type == "$q_v$ (mm)", "$q_v/q_v$", type))) %>%
+      mutate(label = factor(label, levels = bearpaws.levels)) 
+
+  df.state.change.zonmean %T>% 
+      { plot.palette <<-  bearpaws.palette((.)$label) } %>% 
+      ggplot(aes(x = lat, y = delta, color = label)) +
+      geom_line() +
+      scale_x_geo_zonmean() +
+      facet_wrap(type ~ ., scales = "free_y", ncol = 3) +
+      scale_color_manual(name = NULL, values = plot.palette) +
+      scale_linetype_discrete(name = NULL) +
+      theme_bw() +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank(),
+            legend.position = "bottom", legend.box = "horizontal", legend.direction = "horizontal")
+
+  @
+  \caption{}
+  \label{fig:state-change}
+\end{figure}
+
+\begin{figure}
+  \centering
+  
+  <<sst4k-feedback-decomposition-zonmean,dev='tikz',fig.width=6,fig.height=3.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  
+  df.feedback.zonmean.total <- get.prp.echam(c(4, 0.1), creth = -3) %>% 
+      prp.combine.lw.and.sw() %>%
+      ## filter(spectrum == "SW") %>%
+      mutate(pert = revalue(pert, c(phase = "phase", cwp = "condensate", cf = "fraction"))) %>% 
+      group_by(pert, ccraut, lat) %>%
+      summarize(feedback = 0.25 ## 4 K warming
+                * mean(erf)) %>%
+      ungroup() %>%
+      bearpaws.label() %>% 
+      mutate(label = factor(label, levels = bearpaws.levels)) %>%
+      spread(pert, feedback) %>%
+      mutate(sum = condensate + phase + fraction) %>%
+      gather(pert, feedback, condensate, phase, sum, fraction, cloud)
+  
+  gg <- df.feedback.zonmean.total %>% 
+      ## { plot.palette <<-  bearpaws.palette((.)$label) } %>% 
+      ggplot(aes(lat, feedback, col = pert, lty = pert, size = pert)) +
+      geom_line() +
+      scale_x_geo_zonmean() +
+      theme_bw() +
+      scale_linetype_manual(name = NULL, values = c(1,2,3,4,1)) +
+      scale_size_manual(name = NULL, values = c(1.2,1,1,1,1)) +
+      scale_color_brewer(name = NULL, palette = "Set1") +
+      labs(y = "Feedback~(W~m$^{-2}$~K$^{-1}$)") +
+      facet_grid(. ~ label) +
+      guides(linetype = guide_legend(order = 1),
+             size = guide_legend(order = 1),
+             color = guide_legend(order = 1))
+  
+  gg + theme(legend.position = c(0.1, 0.775), legend.background = element_rect(fill = NA),
+             legend.box = "horizontal", legend.direction = "vertical",
+             legend.spacing.y = unit(0, "lines"),
+             axis.title.x = element_blank())
+
+  @
+  \caption{}
+  \label{fig:feedback-decomposition}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+  \centering
+  
+  <<sst4k-cldlif-diff-ratios-zonmean,dev='tikz',fig.width=3,fig.height=6,out.width='0.5\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  
+  df.fb.norm %>% 
+      mutate(label = factor(label, levels = bearpaws.levels)) %>%
+      filter(lat > -70, lat < 75) %>%
+      filter(!(denominator == "optics.as.denominator" & pert == "phase")) %>%
+      mutate(denominator = revalue(denominator,
+                                   c("one" = "",
+                                     "optics.as.denominator" = "/\\lambda_{\\phase}",
+                                     "swcre" = "/|\\swcre|",
+                                     "xlvi" = "/\\lwp"))) %>%
+      mutate(denominator = sprintf("$\\lambda%s$", denominator)) %>%
+      mutate(pert = sprintf("$\\fb%s$", pert)) %>% 
+      arrange(desc(pert)) %>%
+      mutate(pert = factor(pert, levels = unique(pert))) %T>% 
+      { plot.palette <<-  bearpaws.palette((.)$label) } %>% 
+      ggplot(aes(lat, pmax(-10, pmin(10, normalized.feedback)), col = label, lty = pert)) +
+      geom_line(lwd = 1) +
+      scale_x_geo_zonmean() +
+      facet_grid(denominator ~ ., scales = "free_y", switch = "y") +
+      geom_hline(yintercept = 0, lty = "dotted") +
+      theme_bw() +
+      scale_color_manual(name = NULL, values = plot.palette) +
+      scale_linetype_discrete(name = NULL) +
+      theme(legend.position = "bottom", legend.box = "horizontal", legend.direction = "vertical") +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank(),
+            strip.placement = "outside", strip.background.y = element_blank())
+
+  @
+  \caption{}
+  \label{fig:untuned}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+  \centering
+  <<sst4k-acc-state-zonmean,dev='tikz',fig.width=6,fig.height=7.2,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+
+  df.state.zonmean <- bind_rows(get.rad.summary.echam(c(0.1,4), ccauloc = 1, creth = c(-2,-3), nudged = FALSE, daily = TRUE),
+                                get.rad.summary.echam(c(1e-1), ccauloc = 10, creth = c(-2,-3), nudged = FALSE, three.hourly = TRUE)) %>%
+      mutate(ccauloc = replace(ccauloc, is.na(ccauloc), 1),
+             creth = replace(creth, is.na(creth), 0)) %>%
+      mutate(case = factor(as.integer(creth), levels = rev(sort(unique(as.integer(creth)))))) %>%
+      mutate(case = revalue(case, c("-1" = "AMIP",
+                                    "-2" = "AMIP",
+                                    "-3" = "AMIP4K"))) %>%
+      mutate(aprl = aprl * 3600,
+             aprs = aprs * 3600,
+             aprc = aprc * 3600) %>%
+      mutate(rtot = srad0 + trad0,
+             ptot = aprl + aprc) %>%
+      mutate(albedo = 1 - srad0 / srad0d,
+             swcre = srad0 - sraf0,
+             lwcre = trad0 - traf0) %>%
+      mutate(lon = 1e-5 * lon %/% 1e-5,
+             lat = 1e-5 * lat %/% 1e-5) %>%
+      bearpaws.label.acc() %>%
+      gather(type, flux, c(srad0:xlvi, rtot, ptot, albedo, swcre, lwcre)) %>%
+      group_by(case, type, label, lat) %>%
+      summarize(flux = mean(flux)) %>% 
+      ungroup() %>%
+      mutate(type = revalue(type,
+                            c(aclcov = "$f_c$",
+                              aprc = "$P_\\text{conv}$ (mm~h$^{-1}$)",
+                              aprl = "$P_\\text{strat}$ (mm~h$^{-1}$)",
+                              aprs = "$P_\\text{snow}$ (mm~h$^{-1}$)",
+                              qvi = "$q_v$ (kg~m$^{-2}$)",
+                              xlvi = "\\lwp~(kg~m$^{-2}$)",
+                              xivi = "\\iwp~(kg~m$^{-2}$)",
+                              rtot = "$R_\\text{TOA}$ (\\unit{W~m^{-2}})",
+                              ptot = "$P_\\text{tot}$ (mm~h$^{-1}$)",
+                              srad0 = "TOA SW (\\unit{W~m^{-2}})",
+                              sraf0 = "TOA SW clr (\\unit{W~m^{-2}})",
+                              trad0 = "TOA LW (\\unit{W~m^{-2}})",
+                              traf0 = "TOA LW clr (\\unit{W~m^{-2}})",
+                              lwcre = "LW CRE (\\unit{W~m^{-2}})",
+                              swcre = "SW CRE (\\unit{W~m^{-2}})")))
+
+  df.state.zonmean %>% 
+      bind_rows(sat.dat %>% rename(flux = val)) %>% 
+      mutate(label = factor(label, levels = bearpaws.levels)) %>%
+      filter(case == "AMIP") %T>% 
+      { plot.palette <<-  bearpaws.palette((.)$label) } %>% 
+      ggplot(aes(x = lat, y = flux, lwd = label, color = label)) +
+      geom_line() +
+      scale_x_geo_zonmean() +
+      facet_wrap(type ~ ., scales = "free_y", ncol = 3) +
+      scale_color_manual(name = NULL, values = plot.palette) +
+      scale_size_manual(name = NULL, values = c(1.2,1,1,1)) +
+      theme_bw() +
+      theme(axis.title.x = element_blank(), axis.title.y = element_blank(),
+            legend.position = "bottom", legend.box = "horizontal", legend.direction = "horizontal")
+
+  @
+  \caption{}
+  \label{fig:state-acc}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+  \centering
+
+  <<bias-setup-acc,dev='tikz',fig.width=6,fig.height=6.5,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  df.rain.acc <- bind_rows(df.rain,
+                           get.cosp.counts.echam(c(0.1), ccauloc = 10, creth = -2, three.hourly = TRUE) %>%
+                           mutate(ccauloc = replace(ccauloc, is.na(ccauloc), 1),
+                                  creth = replace(creth, is.na(creth), 0)) %>%
+                           bearpaws.label.acc() %>%
+                           mutate(case = label) %>%
+                           mutate(lon = ifelse(lon <= 180, lon, lon - 360)) %>%
+                           group_by(lon, lat, case) %>%
+                           mutate(warm.prob = n.warm.rain / (n.warm.rain + 0 * n.cold.rain + n.no.rain)) %>%
+                           ungroup() %>%
+                           select(lon, lat, warm.prob, case))
+  
+  df.rain.bias.acc <- df.rain.acc %>%
+      group_by(lon, lat) %>% 
+      mutate(warm.prob.bias = warm.prob - warm.prob[case == "Satellite"],
+             warm.prob.bias.reduction = warm.prob - warm.prob[case == "$\\gamma = 4$ (Reference)"]) %>%
+      ungroup()
+
+  df.rain.bias.acc.zonmean <- df.rain.bias.acc %>%
+      group_by(lat, case) %>%
+      summarize(warm.prob.bias.reduction = mean(warm.prob.bias.reduction, na.rm = TRUE),
+                warm.prob.bias = mean(warm.prob.bias, na.rm = TRUE),
+                warm.prob = mean(warm.prob, na.rm = TRUE)) %>%
+      ungroup() 
+  @
+
+  <<ccraut-acc-warmprob,dev='tikz',fig.width=6,fig.height=3,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  
+  df.rain.bias.acc.zonmean %>%
+      mutate(case = factor(case, levels = bearpaws.levels)) %T>%
+      { plot.palette <<-  bearpaws.palette((.)$case) } %>% 
+      ## mutate(case = replace(case, case == "Satellite", "CloudSat/Calipso")) %>% 
+      ## arrange(case) %>% 
+      ## filter(case != "Satellite") %>%
+      ggplot(aes(lat, warm.prob, color = case)) +
+      geom_line(lwd = 1) +
+      scale_x_geo_zonmean() +
+      scale_color_manual(name = NULL, values = plot.palette) +
+      ##      scale_color_brewer(name = NULL, palette = "Dark2", direction = -1) +
+      labs(y = "$p_\\text{warm}$") +
+      theme_bw() +
+      theme(legend.position = "bottom", legend.box = "horizontal") +
+      theme(axis.title.x = element_blank()) +
+      theme(legend.position = c(0.225, 0.775), legend.background = element_rect(fill = NA),
+            legend.spacing.y = unit(0, "lines"),
+            axis.title.x = element_blank())
+  @ 
+
+  \caption{}
+  \label{fig:pwarm-acc}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+  \centering
+  
+  <<sst4k-acc-cldlif-diff-zonmean,dev='tikz',fig.width=6,fig.height=3,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  
+  df.feedback.zonmean.acc <- bind_rows(df.feedback.zonmean,
+            ## give ccauloc=10 run the same treatment as the others, noting that AMIP and AMIP+4K were switched in the PRP processing
+            get.prp.echam(0.1, ccauloc = 10, creth = -3) %>% 
+            prp.combine.lw.and.sw() %>% 
+            ## filter(spectrum == "SW") %>%
+            mutate(pert = revalue(pert, c(phase = "phase", cwp = "condensate"))) %>%
+            filter(pert %in% c("phase", "condensate")) %>% 
+            group_by(pert, ccraut, ccauloc, creth, lat) %>%
+            summarize(feedback = 0.25 ## 4 K warming
+                      * mean(erf)) %>%
+            ungroup() %>% 
+            bearpaws.label.acc()) %>%
+      mutate(label = factor(label, levels = bearpaws.levels)) 
+
+  gg <- df.feedback.zonmean.acc %T>%
+      { plot.palette <<-  bearpaws.palette((.)$label) } %>% 
+      ggplot(aes(lat, feedback, col = label, lty = pert)) +
+      geom_line(lwd = 1) +
+      scale_x_geo_zonmean() +
+      theme_bw() +
+      scale_color_manual(name = NULL, values = plot.palette) +
+      scale_linetype_discrete(name = NULL) +
+      labs(y = "Feedback~(W~m$^{-2}$~K$^{-1}$)")
+  
+  gg + theme(legend.position = c(0.55, 0.15), legend.background = element_rect(fill = NA),
+             legend.spacing.y = unit(0, "lines"),
+             legend.box = "horizontal",
+             axis.title.x = element_blank())
+
+  @
+  \caption{}
+  \label{fig:feedback-acc}
+\end{figure}
+
+\clearpage
+
+\begin{figure}
+  \centering
+  
+  <<sst4k-acc-cldlif-diff-lw-sw-zonmean,dev='tikz',fig.width=6,fig.height=3,out.width='\\textwidth',message=FALSE,cache=TRUE,echo=FALSE,results='hide'>>=
+  
+  df.feedback.zonmean.acc.lw.sw <- bind_rows(get.prp.echam(c(4, 0.1), creth = -2) %>%
+                                             mutate(pert = revalue(pert, c(phase = "optics", cwp = "lifetime"))) %>% 
+                                             filter(pert == "lifetime") %>% 
+                                             group_by(pert, ccraut, lat, spectrum) %>%
+                                             summarize(feedback = -0.25 ## 4 K warming; sign flip in PRP code
+                                                       * mean(erf)) %>%
+                                             ungroup() %>%
+                                             bearpaws.label(),
+                                             get.prp.echam(0.1, ccauloc = 10, creth = -3) %>% 
+                                             ## filter(spectrum == "SW") %>%
+                                             mutate(pert = revalue(pert, c(phase = "optics", cwp = "lifetime"))) %>%
+                                             filter(pert == "lifetime") %>% 
+                                             group_by(pert, ccraut, ccauloc, creth, lat, spectrum) %>%
+                                             summarize(feedback = 0.25 ## 4 K warming
+                                                       * mean(erf)) %>%
+                                             ungroup() %>% 
+                                             bearpaws.label.acc()) %>%
+      mutate(label = factor(label, levels = bearpaws.levels)) 
+
+  gg <- df.feedback.zonmean.acc.lw.sw %T>%
+      { plot.palette <<-  bearpaws.palette((.)$label) } %>% 
+      ggplot(aes(lat, feedback, col = label)) +
+      geom_line(lwd = 1) +
+      scale_x_geo_zonmean() +
+      facet_grid( ~ spectrum) +
+      theme_bw() +
+      scale_color_manual(name = NULL, values = plot.palette) +
+      labs(y = "Feedback~(W~m$^{-2}$~K$^{-1}$)")
+  
+  gg + theme(legend.position = c(0.225, 0.2), legend.background = element_rect(fill = NA),
+             legend.spacing.y = unit(0, "lines"),
+             axis.title.x = element_blank())
+
+  @
+  \caption{}
+  \label{fig:feedback-acc-lw-sw}
+\end{figure}
+
+\afterpage{%
+  \clearpage% Flush earlier floats (otherwise order might not be correct)
+  \thispagestyle{plain}
+  \begin{landscape}% Landscape page
+\begin{table}
+  \centering
+  \caption{}
+  \label{tab:fit}
+  \begin{tabular}{l|rrr|rrr}
+    \hline\hline
+    & \multicolumn{3}{c|}{$\lambda_\ell~(\unit{W~m^{-2}~K^{-1}})$} & \multicolumn{3}{c}{$\lambda_\text{o}~(\unit{W~m^{-2}~K^{-1}})$} \\
+    \multicolumn{1}{c|}{Model configuration} & \multicolumn{1}{c}{Global} & \multicolumn{1}{c}{NH} & \multicolumn{1}{c|}{SH} & \multicolumn{1}{c}{Global} & \multicolumn{1}{c}{NH} & \multicolumn{1}{c}{SH} \\
+    <<feedbacks-fit-tbl,dev='tikz',fig.width=3,fig.height=3,out.width='0.5\\textwidth',message=FALSE,cache=FALSE,echo=FALSE,results='asis'>>=
+    df.fit.summary <- df.fit %>%
+        bearpaws.label() %>%
+        group_by(label, ccraut, pert, denominator) %>%
+        summarize(sd.nh = sd(feedback.nh/denominator.value, na.rm = TRUE),
+                  sd.sh = sd(feedback.sh/denominator.value, na.rm = TRUE),
+                  sd.global = sqrt(sd.nh^2 + sd.sh^2),
+                  feedback.nh = mean(feedback.nh/denominator.value, na.rm = TRUE),
+                  feedback.sh = mean(feedback.sh/denominator.value, na.rm = TRUE),
+                  feedback.global = feedback.sh + feedback.nh) %>%
+        ungroup() 
+
+    df.fit.summary %>%
+        mutate(pert = revalue(pert, c(phase = "optics", twp = "lifetime"))) %>%
+        filter(denominator == "one") %>%
+        gather(sd, sd.val, sd.nh, sd.sh, sd.global) %>% 
+        gather(feedback, feedback.val, feedback.nh, feedback.sh, feedback.global) %>%
+        mutate(sd = gsub("sd.", "", sd),
+               feedback = gsub("feedback.", "", feedback)) %>%
+        filter(sd == feedback) %>%
+        mutate(val = sprintf("$%.3f\\pm%.3f$", feedback.val, 1.956 * sd.val)) %>% 
+        arrange(label, pert) %>%
+        mutate(feedback = paste(pert, feedback, sep = ".")) %>% 
+        select(label, feedback, val) %>% 
+        spread(feedback, val, sep = ".") %>%
+        xtable::xtable(digits = 3) %>%
+        print(., sanitize.colnames.function = identity,
+              sanitize.text.function = identity,
+              floating = FALSE,
+              only.contents = TRUE,
+              math.style.negative = TRUE,
+              math.style.exponents = TRUE,
+              include.rownames = FALSE,
+              include.colnames = FALSE,
+              NA.string = "\\alert{0}",
+              format.args = list(flag = "#"),
+              hline.after = c(rep(-1, 2), 0, rep(nrow(.), 2)))
+
+  @
+    
+  \end{tabular}
+\end{table}
+
+\begin{table}
+  \centering
+  \caption{}
+  \begin{tabular}{l|rrrr}
+    \hline\hline
+    %& \multicolumn{2}{c|}{ERF contributions (W~m$^{-2}$)}
+    %& %% Normalized adjustment
+    %& \multicolumn{3}{c}{State variables}\\
+    <<erf-tbl-prp,dev='tikz',fig.width=12,fig.height=5,out.width='\\textwidth',message=FALSE,cache=FALSE,echo=FALSE,results='asis'>>=      
+    df.rad <- get.rad.summary.echam(c(0.1,4), ccauloc = 1, creth = c(-2,-3), nudged = FALSE, daily = TRUE) %>%
+        mutate(ccauloc = replace(ccauloc, is.na(ccauloc), 1),
+               creth = replace(creth, is.na(creth), 0)) %>%
+        mutate(case = factor(as.integer(creth))) %>%
+        mutate(case = revalue(case, c("-2" = "AMIP",
+                                      "-3" = "AMIP4K"))) %>%
+        mutate(rtot = srad0 + trad0,
+               ptot = (aprl + aprc) * 2.5e6) %>%
+        mutate(albedo = 1 - srad0 / srad0d,
+               swcre = srad0 - sraf0) 
+
+    df.rad.global <- df.rad %>% 
+        gather(type, flux, c(srad0:qvi, rtot, ptot, albedo, swcre)) %>%
+        group_by(case, type, ccraut) %>%
+        mutate(cos.lat = cos(lat * pi / 180)) %>%
+        summarize(flux = sum(flux * cos.lat) / sum(cos.lat)) %>%
+        ungroup() %>%
+        filter(type %in% c("ptot", "rtot", "xlvi", "srad0", "albedo", "swcre")) %>% 
+        spread(type, flux) 
+
+    df.rad.global %>%
+        filter(case == "AMIP") %>% 
+        bearpaws.label() %>%
+        mutate(case = label) %>%
+        select(-label) %>%
+        arrange(desc(ccraut)) %>%
+        mutate(case = factor(case, unique(case))) %>% 
+        select(-ccraut) %>% 
+        mutate(xlvi = as.integer(round(xlvi * 1e3))) %>% 
+        rename("$P$~(W~m$^{-2}$)" = ptot,
+               "$R_\\text{TOA}$~(W~m$^{-2}$)" = rtot,
+               "$\\mathcal{L}$~(g~m$^{-2}$)" = xlvi,
+               "$\\mathcal{S}_c$~(W~m$^{-2}$)" = swcre) %>%
+        select(-c(albedo, srad0)) %>%
+        rename("Model configuration" = case) %>% 
+        xtable::xtable() %>%
+        print(., sanitize.colnames.function = identity,
+              sanitize.text.function = identity,
+              floating = FALSE,
+              only.contents = TRUE,
+              math.style.negative = TRUE,
+              math.style.exponents = TRUE,
+              include.rownames = FALSE,
+              include.colnames = TRUE,
+              NA.string = "\\alert{0}",
+              format.args = list(flag = "#"),
+              hline.after = c(rep(-1, 2), 0, rep(nrow(.), 2)))
+    @
+  \end{tabular}
+\end{table}
+
+\begin{table}
+  \centering
+  \caption{}
+  \label{tab:components}
+  \begin{tabular}{l|rr}
+    \hline\hline
+    & \multicolumn{2}{c}{Global-mean PRP estimate (\unit{W~m^{-2}~K^{-1}})}\\
+    <<feedback-detail-global,dev='tikz',fig.width=12,fig.height=5,out.width='\\textwidth',message=FALSE,cache=FALSE,echo=FALSE,results='asis'>>=      
+    df.feedback.zonmean.total %>%
+        group_by(label,pert) %>%
+        mutate(cos.lat = cos(lat * pi / 180)) %>%
+        summarize(feedback = sum(feedback * cos.lat) / sum(cos.lat)) %>%
+        ungroup() %>%
+        rename("PRP perturbation" = pert) %>% 
+        spread(label,feedback) %>% 
+        xtable::xtable() %>%
+        print(., sanitize.colnames.function = identity,
+              sanitize.text.function = identity,
+              floating = FALSE,
+              only.contents = TRUE,
+              math.style.negative = TRUE,
+              math.style.exponents = TRUE,
+              include.rownames = FALSE,
+              include.colnames = TRUE,
+              NA.string = "\\alert{0}",
+              format.args = list(flag = "#"),
+              hline.after = c(rep(-1, 2), 0, rep(nrow(.), 2)))
+    @
+    \end{tabular}
+\end{table}
+
+\begin{table}
+  \centering
+  \caption{}
+  \label{tab:norm}
+  \begin{tabular}{l|rrr|rrr}
+    \hline\hline
+    %% & \multicolumn{3}{c|}{$\lambda_\ell$} & \multicolumn{3}{c}{$\lambda_\text{o}$} \\
+    %% \multicolumn{1}{c|}{Model configuration}
+    $\chi$ & \multicolumn{1}{c}{$\lambda_\ell/\chi$} & \multicolumn{1}{c}{$\lambda_\ell'/\chi'$} & \multicolumn{1}{c|}{$(\lambda_\ell'/\chi')/(\lambda_\ell/\chi)$} & \multicolumn{1}{c}{$\lambda_\text{o}/\chi$} & \multicolumn{1}{c}{$\lambda_\text{o}'/\chi'$} & \multicolumn{1}{c}{$(\lambda_\text{o}/\chi)/(\lambda_\text{o}'/\chi')$} \\
+    <<feedbacks-norm-tbl,dev='tikz',fig.width=3,fig.height=3,out.width='0.5\\textwidth',message=FALSE,cache=FALSE,echo=FALSE,results='asis'>>=
+    df.fit.summary %>%
+        mutate(pert = revalue(pert, c(phase = "optics", twp = "lifetime"))) %>% 
+        filter(denominator != "optics.as.denominator") %>% 
+        select(ccraut, pert, lambda = feedback.global, denominator) %>% 
+        bind_rows(., filter(., denominator == "one") %>%
+                     group_by(ccraut) %>% 
+                     spread(pert, lambda) %>%
+                     mutate(lambda = lifetime/optics,
+                            pert = "lifetime",
+                            denominator = "optics") %>%
+                     select(-c(lifetime, optics))) %>%
+        spread(ccraut, lambda, sep = "_") %>%
+        rename(lambda = ccraut_4,
+               lambda_prime = ccraut_0.1) %>%
+        mutate(lambda_ratio = lambda_prime / lambda) %>% 
+        gather(lambda, lambda.val, lambda, lambda_prime, lambda_ratio) %>%
+        arrange(denominator, pert, lambda) %>% 
+        mutate(lambda = paste(lambda, pert, sep = "_")) %>%
+        arrange(denominator, pert) %>%
+        select(-pert) %>% 
+        spread(lambda, lambda.val) %>%
+        select(denominator,
+               lambda_lifetime, lambda_prime_lifetime, lambda_ratio_lifetime,
+               lambda_optics, lambda_prime_optics, lambda_ratio_optics) %>%
+        ## mutate(ratio_ratio = lambda_ratio_lifetime / lambda_ratio_optics) %>%
+        arrange(-lambda_ratio_lifetime) %>%
+        mutate(denominator = revalue(denominator,
+                                     c(one = 1,
+                                       optics = "$\\lambda_\\text{o}$",
+                                       xlvi = "$\\lwp$",
+                                       swcre = "$|\\swcre|$"))) %>% 
+      xtable::xtable(digits = 3) %>%
+      print(., sanitize.colnames.function = identity,
+            sanitize.text.function = identity,
+            floating = FALSE,
+            only.contents = TRUE,
+            math.style.negative = TRUE,
+            math.style.exponents = TRUE,
+            include.rownames = FALSE,
+            include.colnames = FALSE,
+            NA.string = "-",
+            ## NA.string = "\\multicolumn{1}{c}{-}",
+            format.args = list(flag = "#"),
+            hline.after = c(rep(-1, 2), 0, rep(nrow(.), 2)))
+        
+    
+    @
+  \end{tabular}
+\end{table}
+
+\end{landscape}
+}
+
+\end{document}
